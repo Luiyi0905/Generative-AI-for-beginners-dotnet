@@ -1,5 +1,6 @@
 using ClosedXML.Excel;
 using PdfTableExtractor.Models;
+using System.Globalization;
 
 namespace PdfTableExtractor.Services;
 
@@ -31,8 +32,6 @@ public class ExcelExportService
                 }
 
                 var worksheet = workbook.Worksheets.Add(sheetName);
-
-                // Set default column widths to 15 as requested
                 worksheet.Columns().Width = 15;
 
                 // Add Headers
@@ -44,7 +43,6 @@ public class ExcelExportService
                     cell.Style.Font.Bold = true;
                     cell.Style.Fill.BackgroundColor = XLColor.LightGray;
 
-                    // Specific width for Description column
                     if (headerText.Contains("Descripción", StringComparison.OrdinalIgnoreCase) ||
                         headerText.Contains("Description", StringComparison.OrdinalIgnoreCase))
                     {
@@ -58,7 +56,27 @@ public class ExcelExportService
                     var rowData = table.Rows[rowIndex];
                     for (int colIndex = 0; colIndex < rowData.Count; colIndex++)
                     {
-                        worksheet.Cell(rowIndex + 2, colIndex + 1).Value = rowData[colIndex];
+                        var cell = worksheet.Cell(rowIndex + 2, colIndex + 1);
+                        string cellValue = rowData[colIndex];
+                        string headerText = table.Headers.Count > colIndex ? table.Headers[colIndex] : "";
+
+                        // Check if it's a numeric column (Cargo, Abono, Saldo)
+                        bool isNumericColumn = headerText.Contains("Cargo", StringComparison.OrdinalIgnoreCase) ||
+                                              headerText.Contains("Abono", StringComparison.OrdinalIgnoreCase) ||
+                                              headerText.Contains("Saldo", StringComparison.OrdinalIgnoreCase) ||
+                                              headerText.Contains("Debit", StringComparison.OrdinalIgnoreCase) ||
+                                              headerText.Contains("Credit", StringComparison.OrdinalIgnoreCase) ||
+                                              headerText.Contains("Balance", StringComparison.OrdinalIgnoreCase);
+
+                        if (isNumericColumn && TryParseCurrency(cellValue, out double numericValue))
+                        {
+                            cell.Value = numericValue;
+                            cell.Style.NumberFormat.Format = "#,##0.00";
+                        }
+                        else
+                        {
+                            cell.Value = cellValue;
+                        }
                     }
                 }
             }
@@ -67,5 +85,27 @@ public class ExcelExportService
         using var stream = new MemoryStream();
         workbook.SaveAs(stream);
         return stream.ToArray();
+    }
+
+    private bool TryParseCurrency(string value, out double result)
+    {
+        result = 0;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        // Remove currency symbols and clean up separators
+        string cleanedValue = value.Replace("$", "").Replace("€", "").Trim();
+
+        // Handle common formats: 1,234.56 or 1.234,56
+        if (double.TryParse(cleanedValue, NumberStyles.Number | NumberStyles.AllowCurrencySymbol, CultureInfo.InvariantCulture, out result))
+        {
+            return true;
+        }
+
+        if (double.TryParse(cleanedValue, NumberStyles.Number | NumberStyles.AllowCurrencySymbol, CultureInfo.GetCultureInfo("es-ES"), out result))
+        {
+            return true;
+        }
+
+        return false;
     }
 }
