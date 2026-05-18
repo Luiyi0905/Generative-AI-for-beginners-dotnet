@@ -1,0 +1,251 @@
+@page "/"
+@using PdfTableExtractor.Services
+@using PdfTableExtractor.Models
+@using Microsoft.AspNetCore.Components.Forms
+@inject PdfService PdfService
+@inject AiExtractorService AiService
+@inject ExcelExportService ExcelService
+@inject IJSRuntime JS
+
+<PageTitle>Smart PDF Table Extractor / Extractor de Tablas PDF</PageTitle>
+
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12 text-center mb-4">
+            <h1>📄 Smart PDF Table Extractor</h1>
+            <p class="lead">Extracción inteligente y selectiva de tablas desde PDF hacia Excel usando IA.</p>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title">1. Cargar PDF / Upload PDF</h5>
+            <InputFile OnChange="OnInputFileChange" class="form-control" accept=".pdf" />
+            @if (isUploading)
+            {
+                <div class="mt-2 text-info">
+                    <div class="spinner-border spinner-border-sm" role="status"></div> Cargando PDF... / Loading PDF...
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (pdfPages > 0)
+    {
+        <div class="card mb-4 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title">2. Seleccionar Páginas / Select Pages</h5>
+                <p class="text-muted small">El PDF tiene @pdfPages páginas. Seleccione las que contienen las tablas que desea extraer.</p>
+
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="btn-group mb-2">
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="SelectAllPages">Seleccionar Todas / All</button>
+                            <button class="btn btn-outline-secondary btn-sm" @onclick="DeselectAllPages">Deseleccionar Todas / None</button>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2" style="max-height: 200px; overflow-y: auto;">
+                            @for (int i = 1; i <= pdfPages; i++)
+                            {
+                                int pageNum = i;
+                                <div class="form-check form-check-inline border rounded p-2">
+                                    <input class="form-check-input" type="checkbox" id="page_@pageNum"
+                                           checked="@selectedPages.Contains(pageNum)"
+                                           @onchange="@(e => TogglePage(pageNum, e))">
+                                    <label class="form-check-label" for="page_@pageNum">Pág @pageNum</label>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-md-6 border-start">
+                        <h6>Vista Previa / Preview</h6>
+                        <div id="pdf-viewer" style="width: 100%; height: 300px; border: 1px solid #ccc; background: #eee; overflow: auto; display: flex; justify-content: center; align-items: center;">
+                            <canvas id="pdf-canvas"></canvas>
+                        </div>
+                        <div class="mt-2 d-flex justify-content-between align-items: center;">
+                             <button class="btn btn-sm btn-secondary" @onclick="PrevPreview" disabled="@(previewPage <= 1)">Anterior</button>
+                             <span>Página @previewPage de @pdfPages</span>
+                             <button class="btn btn-sm btn-secondary" @onclick="NextPreview" disabled="@(previewPage >= pdfPages)">Siguiente</button>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary w-100 py-2" @onclick="ProcessPdf" disabled="@(selectedPages.Count == 0 || isProcessing)">
+                    @if (isProcessing)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        <span> La IA está extrayendo tablas... / AI is extracting...</span>
+                    }
+                    else
+                    {
+                        <span>🚀 Extraer Tablas vía IA / Extract Tables</span>
+                    }
+                </button>
+            </div>
+        </div>
+    }
+
+    @if (extractionResult != null)
+    {
+        <div class="card mb-4 shadow-sm border-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title text-success mb-0">3. Resultados / Results</h5>
+                    <button class="btn btn-success" @onclick="DownloadExcel">
+                        📊 Descargar Excel (.xlsx)
+                    </button>
+                </div>
+
+                <div class="alert alert-info">
+                    <strong>Resumen / Summary:</strong> @extractionResult.Summary
+                </div>
+
+                @foreach (var table in extractionResult.Tables)
+                {
+                    <div class="mb-4">
+                        <h6>@table.TableName</h6>
+                        <div class="table-responsive" style="max-height: 400px;">
+                            <table class="table table-sm table-bordered table-striped">
+                                <thead class="table-dark">
+                                    <tr>
+                                        @foreach (var header in table.Headers)
+                                        {
+                                            <th>@header</th>
+                                        }
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in table.Rows)
+                                    {
+                                        <tr>
+                                            @foreach (var cell in row)
+                                            {
+                                                <td>@cell</td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div class="alert alert-danger mt-3">
+            @errorMessage
+        </div>
+    }
+</div>
+
+@code {
+    private bool isUploading = false;
+    private bool isProcessing = false;
+    private int pdfPages = 0;
+    private int previewPage = 1;
+    private List<int> selectedPages = new();
+    private byte[]? pdfBytes;
+    private ExtractionResult? extractionResult;
+    private string? errorMessage;
+
+    private async Task OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            isUploading = true;
+            errorMessage = null;
+            extractionResult = null;
+
+            var file = e.File;
+            if (file != null)
+            {
+                using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024); // 10MB limit
+                using var memoryStream = new MemoryStream();
+                await stream.CopyToAsync(memoryStream);
+                pdfBytes = memoryStream.ToArray();
+
+                pdfPages = PdfService.GetPageCount(new MemoryStream(pdfBytes));
+                selectedPages = Enumerable.Range(1, pdfPages).ToList();
+                previewPage = 1;
+
+                // Initialize PDF.js viewer
+                await JS.InvokeVoidAsync("pdfInterop.loadPdf", pdfBytes);
+                await JS.InvokeVoidAsync("pdfInterop.renderPage", previewPage);
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error loading PDF: {ex.Message}";
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private void TogglePage(int page, ChangeEventArgs e)
+    {
+        bool isChecked = (bool)(e.Value ?? false);
+        if (isChecked && !selectedPages.Contains(page))
+            selectedPages.Add(page);
+        else if (!isChecked && selectedPages.Contains(page))
+            selectedPages.Remove(page);
+
+        selectedPages.Sort();
+    }
+
+    private void SelectAllPages() => selectedPages = Enumerable.Range(1, pdfPages).ToList();
+    private void DeselectAllPages() => selectedPages.Clear();
+
+    private async Task PrevPreview()
+    {
+        if (previewPage > 1)
+        {
+            previewPage--;
+            await JS.InvokeVoidAsync("pdfInterop.renderPage", previewPage);
+        }
+    }
+
+    private async Task NextPreview()
+    {
+        if (previewPage < pdfPages)
+        {
+            previewPage++;
+            await JS.InvokeVoidAsync("pdfInterop.renderPage", previewPage);
+        }
+    }
+
+    private async Task ProcessPdf()
+    {
+        if (pdfBytes == null || selectedPages.Count == 0) return;
+
+        try
+        {
+            isProcessing = true;
+            errorMessage = null;
+
+            var extractedText = PdfService.ExtractTextFromPages(new MemoryStream(pdfBytes), selectedPages);
+            extractionResult = await AiService.ExtractTablesAsync(extractedText);
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Error processing PDF with AI: {ex.Message}. Make sure your OpenAI API Key is configured.";
+        }
+        finally
+        {
+            isProcessing = false;
+        }
+    }
+
+    private async Task DownloadExcel()
+    {
+        if (extractionResult == null) return;
+
+        var excelBytes = ExcelService.ExportToExcel(extractionResult);
+        var fileName = $"Extracted_Tables_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
+
+        await JS.InvokeVoidAsync("saveAsFile", fileName, Convert.ToBase64String(excelBytes));
+    }
+}
