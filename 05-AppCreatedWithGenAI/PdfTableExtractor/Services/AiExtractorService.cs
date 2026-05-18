@@ -37,16 +37,23 @@ public class AiExtractorService
             Eres un experto en extracción de datos financieros y tablas.
             Tu tarea es identificar y extraer TODAS las tablas del contenido de texto del PDF proporcionado.
             Debes ser extremadamente preciso con las columnas y filas.
-            Si una descripción ocupa varias líneas, únelas en una sola celda.
+
+            REGLAS IMPORTANTES PARA FECHAS:
+            - Identifica el año del documento (ej: 2025).
+            - Formatea todas las fechas en la columna 'Fecha' como DD/MM/YYYY (ej: 01/09/2025).
+            - Si el PDF solo dice "01/09", tú debes completar el año basado en el contexto del documento.
+
+            REGLAS PARA DESCRIPCIÓN:
+            - Si una descripción ocupa varias líneas, únelas en una sola celda de forma coherente.
 
             Devuelve los datos como un objeto JSON con esta estructura:
             {
               "tables": [
                 {
-                  "tableName": "Descripción de la tabla (ej: Transacciones Bancarias)",
+                  "tableName": "Descripción de la tabla",
                   "headers": ["Fecha", "Descripción", "Referencia", "Cargo", "Abono", "Saldo"],
                   "rows": [
-                    ["01/09", "DEPOSITO 002981215", "", "", "8,054.77", "25,528.44"],
+                    ["01/09/2025", "DEPOSITO 002981215", "", "", "8,054.77", "25,528.44"],
                     ...
                   ]
                 }
@@ -56,7 +63,7 @@ public class AiExtractorService
             Asegúrate de que el JSON sea válido y solo devuelve el JSON. No incluyas explicaciones.
             """);
 
-        history.AddUserMessage($"Extrae todas las tablas del siguiente contenido de texto de un PDF con la máxima precisión:\n\n{pdfText}");
+        history.AddUserMessage($"Extrae todas las tablas del siguiente contenido de texto de un PDF con la máxima precisión, formateando las fechas con el año completo (DD/MM/YYYY):\n\n{pdfText}");
 
         var executionSettings = new OpenAIPromptExecutionSettings
         {

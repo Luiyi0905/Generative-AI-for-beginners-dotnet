@@ -11,19 +11,17 @@ public class ExcelExportService
 
         if (data.Tables == null || data.Tables.Count == 0)
         {
-            var worksheet = workbook.Worksheets.Add("Summary");
-            worksheet.Cell(1, 1).Value = "No tables were found or extracted.";
+            var worksheet = workbook.Worksheets.Add("Resumen");
+            worksheet.Cell(1, 1).Value = "No se encontraron tablas para extraer.";
             worksheet.Cell(2, 1).Value = data.Summary;
         }
         else
         {
             foreach (var table in data.Tables)
             {
-                // Sheet names must be <= 31 chars and no special chars
-                string sheetName = string.IsNullOrWhiteSpace(table.TableName) ? "Table" : table.TableName;
+                string sheetName = string.IsNullOrWhiteSpace(table.TableName) ? "Tabla" : table.TableName;
                 sheetName = sheetName.Length > 30 ? sheetName.Substring(0, 30) : sheetName;
 
-                // Ensure unique sheet name
                 int counter = 1;
                 string originalName = sheetName;
                 while (workbook.Worksheets.Contains(sheetName))
@@ -34,13 +32,24 @@ public class ExcelExportService
 
                 var worksheet = workbook.Worksheets.Add(sheetName);
 
+                // Set default column widths to 15 as requested
+                worksheet.Columns().Width = 15;
+
                 // Add Headers
                 for (int i = 0; i < table.Headers.Count; i++)
                 {
                     var cell = worksheet.Cell(1, i + 1);
-                    cell.Value = table.Headers[i];
+                    string headerText = table.Headers[i];
+                    cell.Value = headerText;
                     cell.Style.Font.Bold = true;
                     cell.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+                    // Specific width for Description column
+                    if (headerText.Contains("Descripción", StringComparison.OrdinalIgnoreCase) ||
+                        headerText.Contains("Description", StringComparison.OrdinalIgnoreCase))
+                    {
+                        worksheet.Column(i + 1).Width = 25;
+                    }
                 }
 
                 // Add Rows
@@ -52,8 +61,6 @@ public class ExcelExportService
                         worksheet.Cell(rowIndex + 2, colIndex + 1).Value = rowData[colIndex];
                     }
                 }
-
-                worksheet.Columns().AdjustToContents();
             }
         }
 
