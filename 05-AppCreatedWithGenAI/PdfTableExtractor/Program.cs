@@ -7,8 +7,12 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddHubOptions(options =>
     {
-        options.MaximumReceiveMessageSize = 10 * 1024 * 1024; // 10MB
+        options.MaximumReceiveMessageSize = 20 * 1024 * 1024; // 20MB
     });
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 20 * 1024 * 1024;
+});
 
 builder.Services.AddScoped<PdfTableExtractor.Services.PdfService>();
 builder.Services.AddScoped<PdfTableExtractor.Services.AiExtractorService>();
