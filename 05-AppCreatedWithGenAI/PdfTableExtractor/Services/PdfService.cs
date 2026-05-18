@@ -1,5 +1,6 @@
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
+using UglyToad.PdfPig.Writer;
 using System.Text;
 
 namespace PdfTableExtractor.Services;
@@ -10,6 +11,22 @@ public class PdfService
     {
         using var document = PdfDocument.Open(pdfStream);
         return document.NumberOfPages;
+    }
+
+    public byte[] ExtractSpecificPages(byte[] pdfBytes, List<int> pageNumbers)
+    {
+        using var document = PdfDocument.Open(pdfBytes);
+        var builder = new PdfDocumentBuilder();
+
+        foreach (var pageNumber in pageNumbers)
+        {
+            if (pageNumber > 0 && pageNumber <= document.NumberOfPages)
+            {
+                builder.AddPage(document, pageNumber);
+            }
+        }
+
+        return builder.Build();
     }
 
     public string ExtractTextFromPages(Stream pdfStream, List<int> pageNumbers)
@@ -28,13 +45,5 @@ public class PdfService
         }
 
         return sb.ToString();
-    }
-
-    public byte[] GetPageAsImage(Stream pdfStream, int pageNumber)
-    {
-        // Note: PdfPig doesn't natively render pages to images easily without extra deps like SkiaSharp or ImageSharp.
-        // For this POC/App, we will focus on text-based table extraction which GPT-4o is very good at.
-        // If images were strictly required for OCR of scanned PDFs, we'd add SkiaSharp.
-        return Array.Empty<byte>();
     }
 }

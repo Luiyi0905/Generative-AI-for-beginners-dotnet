@@ -23,7 +23,6 @@ public class AiExtractorService
         }
         else
         {
-            // Placeholder for when API Key is not yet configured, to avoid crash on startup
             builder.AddOpenAIChatCompletion(modelId, "MISSING_API_KEY");
         }
         _kernel = builder.Build();
@@ -35,26 +34,29 @@ public class AiExtractorService
         var history = new ChatHistory();
         history.AddSystemMessage(
             """
-            You are an expert data extractor. Your task is to identify and extract all tables from the provided text content of a PDF.
-            Return the data as a JSON object that matches this structure:
+            Eres un experto en extracción de datos financieros y tablas.
+            Tu tarea es identificar y extraer TODAS las tablas del contenido de texto del PDF proporcionado.
+            Debes ser extremadamente preciso con las columnas y filas.
+            Si una descripción ocupa varias líneas, únelas en una sola celda.
+
+            Devuelve los datos como un objeto JSON con esta estructura:
             {
               "tables": [
                 {
-                  "tableName": "Description of the table",
-                  "headers": ["Column1", "Column2", ...],
+                  "tableName": "Descripción de la tabla (ej: Transacciones Bancarias)",
+                  "headers": ["Fecha", "Descripción", "Referencia", "Cargo", "Abono", "Saldo"],
                   "rows": [
-                    ["Value1", "Value2", ...],
-                    ["Value1", "Value2", ...]
+                    ["01/09", "DEPOSITO 002981215", "", "", "8,054.77", "25,528.44"],
+                    ...
                   ]
                 }
               ],
-              "summary": "Short summary of the extracted data"
+              "summary": "Breve resumen de los datos extraídos"
             }
-            If no tables are found, return an empty list of tables.
-            Ensure the JSON is valid and only return the JSON, no markdown formatting.
+            Asegúrate de que el JSON sea válido y solo devuelve el JSON. No incluyas explicaciones.
             """);
 
-        history.AddUserMessage($"Extract tables from the following PDF content:\n\n{pdfText}");
+        history.AddUserMessage($"Extrae todas las tablas del siguiente contenido de texto de un PDF con la máxima precisión:\n\n{pdfText}");
 
         var executionSettings = new OpenAIPromptExecutionSettings
         {
@@ -70,7 +72,7 @@ public class AiExtractorService
         }
         catch (JsonException)
         {
-            return new ExtractionResult { Summary = "Error parsing AI response." };
+            return new ExtractionResult { Summary = "Error al analizar la respuesta de la IA. El documento puede ser demasiado complejo." };
         }
     }
 }
