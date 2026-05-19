@@ -20,8 +20,7 @@ public class ExcelExportService
         {
             foreach (var table in data.Tables)
             {
-                string sheetName = string.IsNullOrWhiteSpace(table.TableName) ? "Tabla" : table.TableName;
-                sheetName = sheetName.Length > 30 ? sheetName.Substring(0, 30) : sheetName;
+                string sheetName = CleanSheetName(table.TableName);
 
                 int counter = 1;
                 string originalName = sheetName;
@@ -43,10 +42,9 @@ public class ExcelExportService
                     cell.Style.Font.Bold = true;
                     cell.Style.Fill.BackgroundColor = XLColor.LightGray;
 
-                    if (headerText.Contains("Descripción", StringComparison.OrdinalIgnoreCase) ||
-                        headerText.Contains("Description", StringComparison.OrdinalIgnoreCase))
+                    if (IsDescriptionColumn(headerText))
                     {
-                        worksheet.Column(i + 1).Width = 25;
+                        worksheet.Column(i + 1).Width = 35;
                     }
                 }
 
@@ -60,25 +58,19 @@ public class ExcelExportService
                         string cellValue = rowData[colIndex];
                         string headerText = table.Headers.Count > colIndex ? table.Headers[colIndex] : "";
 
-                        // Check if it's a numeric column (Cargo, Abono, Saldo)
-                        bool isNumericColumn = headerText.Contains("Cargo", StringComparison.OrdinalIgnoreCase) ||
-                                              headerText.Contains("Abono", StringComparison.OrdinalIgnoreCase) ||
-                                              headerText.Contains("Saldo", StringComparison.OrdinalIgnoreCase) ||
-                                              headerText.Contains("Debit", StringComparison.OrdinalIgnoreCase) ||
-                                              headerText.Contains("Credit", StringComparison.OrdinalIgnoreCase) ||
-                                              headerText.Contains("Balance", StringComparison.OrdinalIgnoreCase);
-
-                        if (isNumericColumn && TryParseCurrency(cellValue, out double numericValue))
+                        if (IsNumericColumn(headerText) && TryParseNumeric(cellValue, out double numericValue))
                         {
-                            cell.Value = numericValue;
+                            cell.SetValue(numericValue);
                             cell.Style.NumberFormat.Format = "#,##0.00";
                         }
                         else
                         {
-                            cell.Value = cellValue;
+                            cell.SetValue(cellValue);
                         }
                     }
                 }
+
+                worksheet.SheetView.FreezeRows(1);
             }
         }
 
@@ -87,21 +79,46 @@ public class ExcelExportService
         return stream.ToArray();
     }
 
-    private bool TryParseCurrency(string value, out double result)
+    private string CleanSheetName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "Tabla";
+        var invalidChars = new[] { ':', '\\', '/', '?', '*', '[', ']' };
+        string clean = name;
+        foreach (var c in invalidChars) clean = clean.Replace(c, '_');
+        return clean.Length > 30 ? clean.Substring(0, 30) : clean;
+    }
+
+    private bool IsDescriptionColumn(string header) =>
+        header.Contains("Descripción", StringComparison.OrdinalIgnoreCase) ||
+        header.Contains("Description", StringComparison.OrdinalIgnoreCase) ||
+        header.Contains("Concepto", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsNumericColumn(string header) =>
+        header.Contains("Cargo", StringComparison.OrdinalIgnoreCase) ||
+        header.Contains("Abono", StringComparison.OrdinalIgnoreCase) ||
+        header.Contains("Saldo", StringComparison.OrdinalIgnoreCase) ||
+        header.Contains("Debit", StringComparison.OrdinalIgnoreCase) ||
+        header.Contains("Credit", StringComparison.OrdinalIgnoreCase) ||
+        header.Contains("Balance", StringComparison.OrdinalIgnoreCase) ||
+        header.Contains("Monto", StringComparison.OrdinalIgnoreCase) ||
+        header.Contains("Importe", StringComparison.OrdinalIgnoreCase) ||
+        header.Contains("Amount", StringComparison.OrdinalIgnoreCase);
+
+    private bool TryParseNumeric(string value, out double result)
     {
         result = 0;
         if (string.IsNullOrWhiteSpace(value)) return false;
 
-        // Remove currency symbols and clean up separators
-        string cleanedValue = value.Replace("$", "").Replace("€", "").Trim();
+        // Limpiar valor: quitar símbolos de moneda, espacios y comas de miles
+        string cleanedValue = value.Replace("$", "").Replace("€", "").Replace(" ", "").Replace(",", "").Trim();
 
-        // Handle common formats: 1,234.56 or 1.234,56
-        if (double.TryParse(cleanedValue, NumberStyles.Number | NumberStyles.AllowCurrencySymbol, CultureInfo.InvariantCulture, out result))
+        // Si hay una coma pero no hay punto, asumimos que es el separador decimal
+        if (value.Contains(",") && !value.Contains("."))
         {
-            return true;
+            cleanedValue = value.Replace(",", ".").Replace("$", "").Replace("€", "").Replace(" ", "").Trim();
         }
 
-        if (double.TryParse(cleanedValue, NumberStyles.Number | NumberStyles.AllowCurrencySymbol, CultureInfo.GetCultureInfo("es-ES"), out result))
+        if (double.TryParse(cleanedValue, NumberStyles.Any, CultureInfo.InvariantCulture, out result))
         {
             return true;
         }
